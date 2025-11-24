@@ -14,7 +14,7 @@ class DataCleaner:
     def fix_order_ship_dates(self, df: pd.DataFrame) -> pd.DataFrame:
         """Will attempt to fix erroneous shipping and order times.
         These can be input incorrectly by a used, using the day month
-        in the wrong order and putting ship date in order and order date 
+        in the wrong order and putting ship date in order and order date
         in ship. This function converts the values and checks if the converted
         values fall in the threshold. Of course it's possible an item could
         take 200 days to deliver, but if it is possible to convert the
@@ -212,3 +212,51 @@ class DataCleaner:
                 result[col] = missing_ids
 
         return result
+
+    def check_order_consistency(
+        self, df: pd.DataFrame, key_col: str, check_cols: list[str]
+    ) -> set:
+        """Rows which are in the same order, much of the data can be
+        repeated, this allows us to fill missing data from other rows in the
+        same order. Before this can be done we need to be use the data is
+        consistent across these same order rows as there may be errors.
+        This function prints out the orders which are not consistent then
+        this can be inspected by the used to make change changes required.
+        It can also be used to confirm that the items across rows are
+        consistent.
+
+        Args:
+            df (pd.DataFrame): complete data frame
+            key_col (str): col which links all rows in an order together
+            check_cols (list[str]): columns which should be same in all rows
+
+        Returns:
+            set: Set of orders which are inconsistent
+        """
+
+        # Count distinct values per order per column
+        counts = df.groupby(key_col, dropna=False)[check_cols].nunique(dropna=True)
+
+        # Identify inconsistent orders (any column > 1 unique value)
+        inconsistent_mask = ~counts.le(1).all(axis=1)
+        inconsistent_orders = counts.index[inconsistent_mask]
+
+        if inconsistent_orders.empty:
+            print("All orders are consistent across the specified columns.")
+            return True
+
+        print(f"Found {len(inconsistent_orders)} inconsistent orders:\n")
+
+        inconsistent_set = set()
+        for order_id in inconsistent_orders:
+            inconsistent_set.add(order_id)
+            # Columns that differ
+            bad_cols = counts.columns[counts.loc[order_id] > 1].tolist()
+            print(f"Order {order_id} — inconsistent in: {', '.join(bad_cols)}\n")
+
+            # Print full rows for this order
+            display_df = df[df[key_col] == order_id]
+            print(display_df.to_string(index=False))
+            print("-" * 80)
+
+        return inconsistent_set
