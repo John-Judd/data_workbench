@@ -252,3 +252,144 @@ def test_nan_values_are_ignored_for_consistency_check():
     )
 
     assert result == {"B"}
+
+
+def test_fill_blank_relative_basic_fill_single_blank():
+    cleaner = DataCleaner()
+
+    df = pd.DataFrame(
+        {
+            "Postcode": ["HU1", "HU1", "HU5"],
+            "Country": ["UK", "UK", "UK"],
+            "City": ["Hull", np.nan, "Hull"],
+        }
+    )
+
+    result = cleaner.fill_blank_relative(
+        df,
+        blank_col_name="City",
+        relative_col_names=["Postcode", "Country"],
+    )
+
+    # Function returns df (if you keep `return df`)
+    assert result is df
+
+    # Row 1 (HU1, UK) should be filled from row 0
+    assert df.loc[1, "City"] == "Hull"
+    # Existing values unchanged
+    assert df.loc[0, "City"] == "Hull"
+    assert df.loc[2, "City"] == "Hull"
+
+
+def test_fill_blank_relative_multiple_blanks_same_key():
+    """Multiple NaNs for the same compound key should all be filled
+    from the single known mapping (still 1→1)."""
+    cleaner = DataCleaner()
+
+    df = pd.DataFrame(
+        {
+            "Postcode": ["HU1", "HU1", "HU1", "HU5"],
+            "Country": ["UK", "UK", "UK", "UK"],
+            "City": ["Hull", np.nan, np.nan, "Hull"],
+        }
+    )
+
+    cleaner.fill_blank_relative(
+        df,
+        blank_col_name="City",
+        relative_col_names=["Postcode", "Country"],
+    )
+
+    # Both NaNs for (HU1, UK) should be filled with "Hull"
+    assert df.loc[1, "City"] == "Hull"
+    assert df.loc[2, "City"] == "Hull"
+    # Other rows unchanged
+    assert df.loc[0, "City"] == "Hull"
+    assert df.loc[3, "City"] == "Hull"
+
+
+def test_fill_blank_relative_no_blanks_no_change():
+    cleaner = DataCleaner()
+
+    df = pd.DataFrame(
+        {
+            "Postcode": ["HU1", "HU5"],
+            "Country": ["UK", "UK"],
+            "City": ["Hull", "Hull"],
+        }
+    )
+
+    original = df.copy(deep=True)
+
+    result = cleaner.fill_blank_relative(
+        df,
+        blank_col_name="City",
+        relative_col_names=["Postcode", "Country"],
+    )
+
+    assert result is df
+    pd.testing.assert_frame_equal(df, original)
+
+
+def test_fill_blank_relative_skips_when_related_has_nan():
+    cleaner = DataCleaner()
+
+    df = pd.DataFrame(
+        {
+            "Postcode": ["HU1", np.nan],
+            "Country": ["UK", "UK"],
+            "City": ["Hull", np.nan],  # row 1 has NaN City and NaN Postcode
+        }
+    )
+
+    cleaner.fill_blank_relative(
+        df,
+        blank_col_name="City",
+        relative_col_names=["Postcode", "Country"],
+    )
+
+    # Row 1 cannot be filled because a related column is NaN
+    assert pd.isna(df.loc[1, "City"])
+
+
+def test_fill_blank_relative_no_matching_lookup_leaves_nan():
+    cleaner = DataCleaner()
+
+    df = pd.DataFrame(
+        {
+            "Postcode": ["HU1", "YO1"],
+            "Country": ["UK", "UK"],
+            "City": ["Hull", np.nan],  # YO1 has no known City in any row
+        }
+    )
+
+    cleaner.fill_blank_relative(
+        df,
+        blank_col_name="City",
+        relative_col_names=["Postcode", "Country"],
+    )
+
+    # No matching lookup row for (YO1, UK) → stays NaN
+    assert pd.isna(df.loc[1, "City"])
+
+
+def test_fill_blank_relative_uses_all_relative_columns_for_match():
+    cleaner = DataCleaner()
+
+    df = pd.DataFrame(
+        {
+            "Region": ["East", "East", "West"],
+            "Postcode": ["HU1", "HU1", "HU1"],
+            "City": ["Hull-East", np.nan, "Hull-West"],
+        }
+    )
+
+    # Related columns: Region + Postcode → row 1 should match row 0, not row 2
+    cleaner.fill_blank_relative(
+        df,
+        blank_col_name="City",
+        relative_col_names=["Region", "Postcode"],
+    )
+
+    assert df.loc[1, "City"] == "Hull-East"
+    assert df.loc[2, "City"] == "Hull-West"

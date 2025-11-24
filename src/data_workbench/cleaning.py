@@ -260,3 +260,60 @@ class DataCleaner:
             print("-" * 80)
 
         return inconsistent_set
+
+    def fill_blank_relative(
+        self,
+        df: pd.DataFrame,
+        blank_col_name: str,
+        relative_col_names: list[str],
+    ) -> pd.DataFrame:
+        """This function can be used to fill missing data when we
+        know that there is a 1 to one relationship between the column
+        we are trying to fill and other data. For example If we are
+        missing an city in an address, we know the postal code and
+        state / country will be relative.
+
+        It is important to only use columns which have this relationship
+        which has to be confirmed first. The function check_order_consistency
+        can be used for this.
+
+        Args:
+            df (pd.DataFrame): The data frame containing the data
+            blank_col_name (str): The column which have missing data
+            relative_col_names (list[str]): The columns which are relative
+            to the column missing data.
+
+        Returns:
+            pd.DataFrame: Returns the updated dataframe
+        """
+
+        blank_mask = df[blank_col_name].isna()
+        rel_present_mask = df[relative_col_names].notna().all(axis=1)
+
+        to_fill_mask = blank_mask & rel_present_mask
+        if not to_fill_mask.any():
+            return df
+
+        lookup_df = df[~blank_mask & rel_present_mask][
+            relative_col_names + [blank_col_name]
+        ].drop_duplicates(subset=relative_col_names)
+
+        if lookup_df.empty:
+            return df
+
+        to_fill_df = df.loc[to_fill_mask, relative_col_names + [blank_col_name]]
+
+        merged = to_fill_df.merge(
+            lookup_df,
+            on=relative_col_names,
+            how="left",
+            suffixes=("", "_source"),
+        )
+
+        filled_values = merged[blank_col_name].fillna(
+            merged[blank_col_name + "_source"]
+        )
+
+        df.loc[to_fill_mask, blank_col_name] = filled_values.to_numpy()
+
+        return df
