@@ -218,7 +218,7 @@ class DataCleaner:
     ) -> set:
         """Rows which are in the same order, much of the data can be
         repeated, this allows us to fill missing data from other rows in the
-        same order. Before this can be done we need to be use the data is
+        same order. Before this can be done we need to be sure the data is
         consistent across these same order rows as there may be errors.
         This function prints out the orders which are not consistent then
         this can be inspected by the used to make change changes required.
@@ -233,7 +233,6 @@ class DataCleaner:
         Returns:
             set: Set of orders which are inconsistent
         """
-
         # Count distinct values per order per column
         counts = df.groupby(key_col, dropna=False)[check_cols].nunique(dropna=True)
 
